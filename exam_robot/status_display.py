@@ -12,10 +12,11 @@ class StatusDisplayNode(Node):
         self.sub_distance = self.create_subscription(
             Float32, '/distance', self.distance_callback, 10)
         
-        self.battery_level = 100.0
-        self.distance = 5.0
-        self.timer = self.create_timer(1.0, self.timer_callback)
+        self.timer = self.create_timer(0.5, self.timer_callback)  # 2 Hz
         
+        self.battery_level = 100.0
+        self.distance = 3.0
+        self.last_status = ""
         self.get_logger().info('Status display node started')
 
     def battery_callback(self, msg):
@@ -24,21 +25,35 @@ class StatusDisplayNode(Node):
     def distance_callback(self, msg):
         self.distance = msg.data
 
-    def timer_callback(self):
-        status_msg = String()
-        
-        # Анализ состояния
-        if self.battery_level < 20:
-            status_msg.data = f"LOW BATTERY! Level: {self.battery_level:.1f}%"
+    def get_status(self):
+        # Проверка CRITICAL в первую очередь (наивысший приоритет)
+        if self.battery_level < 10.0 or self.distance < 0.7:
+            return "CRITICAL"
+        # Затем WARNING: Low battery
+        elif self.battery_level < 20.0:
+            return "WARNING: Low battery"
+        # Затем WARNING: Obstacle close
         elif self.distance < 1.0:
-            status_msg.data = f"OBSTACLE AHEAD! Distance: {self.distance:.2f}m"
-        elif self.distance < 2.0:
-            status_msg.data = f"WARNING: Obstacle at {self.distance:.2f}m"
+            return "WARNING: Obstacle close"
+        # Иначе ALL OK
         else:
-            status_msg.data = f"NORMAL: Battery {self.battery_level:.1f}%, Distance {self.distance:.2f}m"
+            return "ALL OK"
+
+    def timer_callback(self):
+        current_status = self.get_status()
         
+        # Публикуем статус
+        status_msg = String()
+        status_msg.data = current_status
         self.publisher_.publish(status_msg)
-        self.get_logger().info(f'Status: {status_msg.data}')
+        
+        # Логируем только при изменении статуса
+        if current_status != self.last_status:
+            self.get_logger().info(f'Status changed: {current_status}')
+            self.last_status = current_status
+        
+        # Для отладки публикуем подробности каждые 2 секунды
+        self.get_logger().debug(f'Battery: {self.battery_level:.1f}%, Distance: {self.distance:.2f}m')
 
 def main(args=None):
     rclpy.init(args=args)
