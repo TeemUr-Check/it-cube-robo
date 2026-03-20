@@ -8,18 +8,31 @@ class BatteryNode(Node):
         self.publisher_ = self.create_publisher(Float32, '/battery_level', 10)
         self.timer = self.create_timer(1.0, self.timer_callback)
         self.battery_level = 100.0
+        self.last_logged_level = 100
         self.get_logger().info('Battery node started')
 
     def timer_callback(self):
-        msg = Float32()
-        msg.data = self.battery_level
-        self.publisher_.publish(msg)
-        
-        self.battery_level -= 1.0
-        if self.battery_level < 0:
-            self.battery_level = 100.0
+        if self.battery_level > 0:
+            msg = Float32()
+            msg.data = self.battery_level
+            self.publisher_.publish(msg)
             
-        self.get_logger().info(f'Battery level: {msg.data:.1f}%')
+            # Логирование каждые 10% снижения
+            current_10_percent = int(self.battery_level // 10) * 10
+            if current_10_percent != self.last_logged_level and current_10_percent > 0:
+                self.get_logger().info(f'Battery: {current_10_percent}%')
+                self.last_logged_level = current_10_percent
+            
+            # Разряд батареи
+            self.battery_level -= 1.0
+            if self.battery_level < 0:
+                self.battery_level = 0.0
+                self.get_logger().info('Battery: 0% - discharged')
+        else:
+            # Батарея разряжена - публикуем 0%
+            msg = Float32()
+            msg.data = 0.0
+            self.publisher_.publish(msg)
 
 def main(args=None):
     rclpy.init(args=args)
